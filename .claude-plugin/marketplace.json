@@ -13,6 +13,11 @@
       "name": "git-guard",
       "source": "./mods/git-guard",
       "description": "명시적인 지시가 없는 git commit과 git push를 차단합니다"
+    },
+    {
+      "name": "commit-trailer",
+      "source": "./mods/commit-trailer",
+      "description": "Claude가 만드는 커밋에 작업한 모델과 effort, 연락처 trailer를 붙입니다"
     }
   ]
 }

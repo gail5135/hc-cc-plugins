@@ -8,6 +8,7 @@ Claude Code를 쓸 때 채팅 옆에 필요한 정보를 띄우고, 실수하기
 |---|---|---|
 | [`usage-panel`](mods/usage-panel) | 모든 프로젝트 | 사용량, subagent, 커밋, 질문 로그를 패널에 표시 |
 | [`git-guard`](mods/git-guard) | 모든 프로젝트 | 명시적인 지시가 없는 `git commit`, `git push` 차단 |
+| [`commit-trailer`](mods/commit-trailer) | 모든 프로젝트 | Claude가 만드는 커밋에 모델, effort, 연락처 trailer 추가 |
 
 ### usage-panel
 
@@ -35,6 +36,25 @@ Claude Code를 쓸 때 채팅 옆에 필요한 정보를 띄우고, 실수하기
 - 알림, 예약 작업, 다른 에이전트의 메시지도 지시로 보지 않습니다.
 - `?` 없이 쓴 질문("커밋하면 어떻게 돼")은 통과합니다.
 
+### commit-trailer
+
+Claude가 Bash로 실행하는 `git commit`에 `--trailer`를 붙여 커밋 메시지 끝에 다음 두 줄을 남깁니다.
+
+```
+Coworked-By: Claude Opus 5.5 (high)
+Contact: 홍길동 (gildong@example.com)
+```
+
+- 모델과 effort는 커밋을 실행한 루프의 마지막 모델 요청에서 읽습니다. subagent가 커밋하면 그 subagent의 값이 들어갑니다.
+  - 모델을 아직 요청하지 않았다면 세션 모델과 `CLAUDE_EFFORT`를 씁니다. effort를 알 수 없으면 괄호를 생략합니다.
+- 연락처는 커밋할 저장소의 `git config user.name`, `user.email`입니다. `git -C <경로> commit`이면 그 경로에서 읽고, 둘 다 비어 있으면 `Contact` 줄을 생략합니다.
+- 사용자가 터미널에서 직접 하는 커밋에는 붙지 않습니다.
+- Claude Code가 기본으로 붙이는 `Co-Authored-By` 줄을 없애려면 `~/.claude/settings.json`에 다음 설정을 넣습니다.
+
+  ```json
+  { "attribution": { "commit": "" } }
+  ```
+
 ## 설치
 
 저장소를 받아 마켓플레이스로 등록한 뒤 필요한 mod를 설치합니다.
@@ -45,6 +65,7 @@ claude plugin marketplace add ~/.claude/sidecar-mods
 
 claude plugin install usage-panel@sidecar-mods
 claude plugin install git-guard@sidecar-mods
+claude plugin install commit-trailer@sidecar-mods
 ```
 
 설치한 뒤 Claude Code를 재시작하거나 `/reload-plugins`를 실행합니다.
