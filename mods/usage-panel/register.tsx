@@ -50,7 +50,7 @@ const AGENT_MARKS: Record<string, string> = {
   killed: '✗',
 }
 const MAX_COMMITS_PER_BRANCH = 10
-const SHOWN_QUESTIONS = 5
+const SHOWN_QUESTIONS = 10
 const STORED_QUESTION_CHARS = 200
 
 const LIMIT_LABELS: Record<string, string> = {

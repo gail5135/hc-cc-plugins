@@ -331,7 +331,7 @@ test('모델 이름과 비용을 표시한다', async ($, on) => {
   await ui.unmount()
 })
 
-test('질문은 최신 5개만 표시하고 전체 개수를 함께 표시한다', async ($, on) => {
+test('질문은 최신 10개만 표시하고 전체 개수를 함께 표시한다', async ($, on) => {
   on('clock.now', () => ({ value: NOW }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
   on('session.append', (_, e, next) => next(e))
@@ -342,10 +342,10 @@ test('질문은 최신 5개만 표시하고 전체 개수를 함께 표시한다
   }
 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: '질문 로그 · 총 120개 (116~120)' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '질문 로그 · 총 120개 (111~120)' })).toBeDefined()
   expect(await ui.find({ key: 'q120' })).toBeDefined()
-  expect(await ui.find({ key: 'q116' })).toBeDefined()
-  expect(await ui.find({ key: 'q115' })).toBeUndefined()
+  expect(await ui.find({ key: 'q111' })).toBeDefined()
+  expect(await ui.find({ key: 'q110' })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -355,41 +355,41 @@ test('이전, 다음 버튼으로 질문 페이지를 이동한다', async ($, o
   on('session.append', (_, e, next) => next(e))
   await $.session.measure({ context: { window: 200_000 }, rateLimits: [], changed: ['context'] })
 
-  for (let index = 1; index <= 7; index += 1) {
+  for (let index = 1; index <= 13; index += 1) {
     await $.session.append(asked(`q${index}`, `질문 ${index}`) as never)
   }
 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: '질문 로그 · 총 7개 (6~7)' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '질문 로그 · 총 13개 (11~13)' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '2 / 2' })).toBeDefined()
-  expect(await ui.find({ key: 'q7' })).toBeDefined()
-  expect(await ui.find({ key: 'q6' })).toBeDefined()
-  expect(await ui.find({ key: 'q5' })).toBeUndefined()
+  expect(await ui.find({ key: 'q13' })).toBeDefined()
+  expect(await ui.find({ key: 'q11' })).toBeDefined()
+  expect(await ui.find({ key: 'q10' })).toBeUndefined()
   expect(await ui.find({ key: 'questions-newer' })).toBeUndefined()
 
   await ui.press({ key: 'questions-older' })
-  expect(await ui.find({ type: 'Text', text: '질문 로그 · 총 7개 (1~5)' })).toBeDefined()
-  expect(await ui.find({ key: 'q5' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '질문 로그 · 총 13개 (1~10)' })).toBeDefined()
+  expect(await ui.find({ key: 'q10' })).toBeDefined()
   expect(await ui.find({ key: 'q1' })).toBeDefined()
-  expect(await ui.find({ key: 'q6' })).toBeUndefined()
+  expect(await ui.find({ key: 'q11' })).toBeUndefined()
   expect(await ui.find({ key: 'questions-older' })).toBeUndefined()
 
   // 이전 페이지를 보는 중에 새 질문이 들어와도 목록이 밀리지 않는다.
-  await $.session.append(asked('q8', '질문 8') as never)
-  expect(await ui.find({ type: 'Text', text: '질문 로그 · 총 8개 (1~5)' })).toBeDefined()
+  await $.session.append(asked('q14', '질문 14') as never)
+  expect(await ui.find({ type: 'Text', text: '질문 로그 · 총 14개 (1~10)' })).toBeDefined()
 
   await ui.press({ key: 'questions-newer' })
-  expect(await ui.find({ key: 'q8' })).toBeDefined()
+  expect(await ui.find({ key: 'q14' })).toBeDefined()
   await ui.unmount()
 })
 
-test('질문이 5개 이하면 페이지 버튼을 표시하지 않는다', async ($, on) => {
+test('질문이 10개 이하면 페이지 버튼을 표시하지 않는다', async ($, on) => {
   on('clock.now', () => ({ value: NOW }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
   on('session.append', (_, e, next) => next(e))
   await $.session.measure({ context: { window: 200_000 }, rateLimits: [], changed: ['context'] })
 
-  for (let index = 1; index <= 5; index += 1) {
+  for (let index = 1; index <= 10; index += 1) {
     await $.session.append(asked(`q${index}`, `질문 ${index}`) as never)
   }
 
