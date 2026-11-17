@@ -484,3 +484,30 @@ test('subagent를 누르면 해당 화면을 열고, 그 화면에서는 메인 
   expect(JSON.stringify(views[1])).not.toContain('a2')
   await viewed.unmount()
 })
+
+const BAR_WIDTHS: [bodyColumns: number, cells: number][] = [
+  [30, 4],
+  [60, 28],
+  [100, 68],
+]
+
+for (const [bodyColumns, cells] of BAR_WIDTHS) {
+  test(`패널 폭이 ${bodyColumns}칸이면 막대를 ${cells}칸으로 그리고 비율만큼 칠한다`, async ($, on) => {
+    on('clock.now', () => ({ value: NOW }))
+    on('session.measure', (_, e) => ({ changed: e.changed }))
+
+    await $.session.measure({
+      context: { tokens: 50_000, window: 200_000, percent: 50 },
+      rateLimits: [],
+      changed: ['context', 'rateLimits'],
+    })
+
+    const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns }, surface: 'terminal' })
+    const parts = await ui.findAll({ type: 'Text', text: /^━+$/ })
+    const filled = parts.find(part => part.props.color === '#eab308')
+    const empty = parts.find(part => part.props.color === '#3f3f46')
+    expect((filled?.text.length ?? 0) + (empty?.text.length ?? 0)).toBe(cells)
+    expect(filled?.text.length).toBe(Math.round(cells / 2))
+    await ui.unmount()
+  })
+}

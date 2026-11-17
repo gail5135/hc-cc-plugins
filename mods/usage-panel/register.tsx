@@ -15,6 +15,9 @@ const COMMIT_COLOR = '#f472b6'
 const QUESTION_COLOR = '#38bdf8'
 // 달러 지폐의 녹색. 사용량 막대의 초록(#22c55e)보다 탁해서 구분된다.
 const COST_COLOR = '#85bb65'
+// 사용량 막대에서 아직 차지 않은 부분의 색.
+const BAR_TRACK_COLOR = '#3f3f46'
+const MIN_BAR_CELLS = 4
 
 // 필드가 바뀌면 태그를 바꾼다: 이전 버전이 저장한 값은 reload 후에도 남는다.
 const snapshot = atom({ plugin: 'hc-cc-plugins', key: 'snapshot' } as const, null, {
@@ -197,6 +200,8 @@ const rememberQuestion = async ($: EngineInterface, question: AskedQuestion) => 
 
 const isWide = (char: string) => (char.codePointAt(0) ?? 0) >= 0x1100
 
+const columnsOf = (text: string) => [...text].reduce((sum, char) => sum + (isWide(char) ? 2 : 1), 0)
+
 // 한글은 두 칸을 차지하므로 글자 수가 아니라 칸 수로 자른다.
 const clip = (text: string, columns: number) => {
   const line = text.replace(/\s+/g, ' ').trim()
@@ -218,10 +223,12 @@ const formatTokens = (tokens: number) => {
   return String(tokens)
 }
 
+// ▰▱는 글꼴마다 폭이 달라 칸을 넘쳐 깨진다. 굵은 가로선(━)은 터미널이 칸에 맞춰 그리므로 줄 가운데에 얇은 막대로 이어진다.
+const BAR_CELL = '━'
 const barCells = (percent: number, cells: number) => {
   const filled = Math.round((Math.min(100, Math.max(0, percent)) / 100) * cells)
 
-  return { filled: '▰'.repeat(filled), empty: '▱'.repeat(cells - filled) }
+  return { filled: BAR_CELL.repeat(filled), empty: BAR_CELL.repeat(cells - filled) }
 }
 
 // claude-opus-5-5[1m] → Opus 5.5
@@ -382,11 +389,22 @@ export const register: Register = on => {
 
     // 카드의 테두리와 안쪽 여백이 좌우 2칸씩 차지한다.
     const width = Math.max(8, e.props.bodyColumns - 6)
-    const barWidth = Math.max(4, Math.min(12, width - 30))
 
     if (data === null) return <Text dimColor>사용량을 읽는 중입니다.</Text>
 
     const contextPercent = data.contextPercent
+    const contextDetail =
+      data.contextTokens === undefined
+        ? '다음 응답 후 표시'
+        : `${formatTokens(data.contextTokens)} / ${formatTokens(Math.max(0, data.contextWindow - data.contextTokens))}`
+    const resetDetail = (resetsAt: string | undefined) =>
+      resetsAt === undefined ? '' : `↻ ${formatResetDate(resetsAt, offset) ?? '-'}`
+    // 이름 3칸, 비율 6칸, 사이 간격 3칸과 가장 긴 오른쪽 글자를 뺀 나머지를 모두 막대로 쓴다. 줄마다 같은 길이라 막대 끝이 맞는다.
+    const detailWidth = Math.max(
+      columnsOf(contextDetail),
+      ...data.rateLimits.map(limit => columnsOf(resetDetail(limit.resetsAt))),
+    )
+    const barWidth = Math.max(MIN_BAR_CELLS, width - 12 - detailWidth)
 
     return (
       <Box flexDirection="column">
@@ -416,18 +434,14 @@ export const register: Register = on => {
             </Box>
             <Box flexDirection="row">
               <Text color={levelColor(contextPercent ?? 0)}>{barCells(contextPercent ?? 0, barWidth).filled}</Text>
-              <Text dimColor>{barCells(contextPercent ?? 0, barWidth).empty}</Text>
+              <Text color={BAR_TRACK_COLOR}>{barCells(contextPercent ?? 0, barWidth).empty}</Text>
             </Box>
             <Box width={6}>
               <Text color={contextPercent === undefined ? undefined : levelColor(contextPercent)}>
                 {contextPercent === undefined ? '-' : `${contextPercent}%`}
               </Text>
             </Box>
-            <Text dimColor>
-              {data.contextTokens === undefined
-                ? '다음 응답 후 표시'
-                : `${formatTokens(data.contextTokens)} / ${formatTokens(Math.max(0, data.contextWindow - data.contextTokens))}`}
-            </Text>
+            <Text dimColor>{contextDetail}</Text>
           </Box>
           {data.rateLimits.map(limit => (
             <Box flexDirection="row" gap={1}>
@@ -436,14 +450,12 @@ export const register: Register = on => {
               </Box>
               <Box flexDirection="row">
                 <Text color={levelColor(limit.percentUsed)}>{barCells(limit.percentUsed, barWidth).filled}</Text>
-                <Text dimColor>{barCells(limit.percentUsed, barWidth).empty}</Text>
+                <Text color={BAR_TRACK_COLOR}>{barCells(limit.percentUsed, barWidth).empty}</Text>
               </Box>
               <Box width={6}>
                 <Text color={levelColor(limit.percentUsed)}>{`${limit.percentUsed}%`}</Text>
               </Box>
-              {limit.resetsAt !== undefined && (
-                <Text dimColor>{`↻ ${formatResetDate(limit.resetsAt, offset) ?? '-'}`}</Text>
-              )}
+              {limit.resetsAt !== undefined && <Text dimColor>{resetDetail(limit.resetsAt)}</Text>}
             </Box>
           ))}
           {data.rateLimits.length === 0 && (
