@@ -10,7 +10,7 @@
     {
       "name": "hc-cc-plugins",
       "source": "./",
-      "description": "사용량 패널, git 커밋·푸시 가드, 커밋 trailer를 한 번에 설치합니다"
+      "description": "사용량 패널, git 커밋·푸시 가드, 커밋 trailer, 선택지 표 규칙을 한 번에 설치합니다"
     }
   ]
 }
