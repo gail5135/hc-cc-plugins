@@ -1,4 +1,4 @@
-# sidecar-mods
+# hc-cc-plugins
 
 Claude Code를 쓸 때 채팅 옆에 필요한 정보를 띄우고, 실수하기 쉬운 작업을 막아 주는 개인용 mod 모음입니다.
 
@@ -60,12 +60,12 @@ Contact: 홍길동 (gildong@example.com)
 저장소를 받아 마켓플레이스로 등록한 뒤 필요한 mod를 설치합니다.
 
 ```sh
-git clone https://github.com/gail5135/sidecar-mods.git ~/.claude/sidecar-mods
-claude plugin marketplace add ~/.claude/sidecar-mods
+git clone https://github.com/gail5135/hc-cc-plugins.git ~/.claude/hc-cc-plugins
+claude plugin marketplace add ~/.claude/hc-cc-plugins
 
-claude plugin install usage-panel@sidecar-mods
-claude plugin install git-guard@sidecar-mods
-claude plugin install commit-trailer@sidecar-mods
+claude plugin install usage-panel@hc-cc-plugins
+claude plugin install git-guard@hc-cc-plugins
+claude plugin install commit-trailer@hc-cc-plugins
 ```
 
 설치한 뒤 Claude Code를 재시작하거나 `/reload-plugins`를 실행합니다.
@@ -77,8 +77,8 @@ mod는 등록한 폴더를 직접 읽으므로 폴더를 지우거나 옮기면 
 원격에 올라간 변경을 받아 마켓플레이스를 갱신한 뒤 `/reload-plugins`를 실행합니다.
 
 ```sh
-git -C ~/.claude/sidecar-mods pull
-claude plugin marketplace update sidecar-mods
+git -C ~/.claude/hc-cc-plugins pull
+claude plugin marketplace update hc-cc-plugins
 ```
 
 ## 개발
