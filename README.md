@@ -1,6 +1,24 @@
 # hc-cc-plugins
 
-Claude Code를 쓸 때 채팅 옆에 필요한 정보를 띄우고, 실수하기 쉬운 작업을 막아 주는 개인용 mod 모음입니다.
+어느 환경에서든 이 플러그인 하나만 설치하면 원하는 Claude Code 환경을 갖출 수 있게 만든 개인용 플러그인입니다. 채팅 옆에 필요한 정보를 띄우고, 실수하기 쉬운 작업을 막아 줍니다.
+
+## 구조
+
+```
+.claude-plugin/
+  plugin.json        플러그인 정보
+  marketplace.json   이 저장소를 마켓플레이스로 등록할 때 쓰는 목록 (플러그인 1개)
+hooks/
+  hooks.json         hooks 모듈 지정
+  register.ts        모든 mod를 등록하는 진입 모듈
+mods/<이름>/         mod별 코드와 테스트
+types/index.d.ts     mod가 쓰는 상태($.state)의 타입
+skills/  agents/  commands/   스킬, 서브에이전트, 슬래시 커맨드 (추가할 때 만듦)
+```
+
+- 플러그인 하나에는 hooks 모듈을 하나만 둘 수 있습니다. 그래서 각 mod는 `register`를 내보내고, `hooks/register.ts`가 이를 차례로 부릅니다.
+- matcher 없는 같은 이벤트(`turn.step` 등)는 플러그인마다 한 번만 걸 수 있습니다. 여러 mod가 같은 이벤트를 써야 하면, 각 mod는 처리 함수를 `function` 선언으로 내보내고 `hooks/register.ts`에서 훅 하나로 묶습니다.
+- 상태 키는 모두 `plugin: 'hc-cc-plugins'` 아래에 둡니다. mod끼리 키 이름이 겹치지 않게 하고, 새 키는 `types/index.d.ts`에 선언합니다.
 
 ## Mods
 
@@ -57,20 +75,17 @@ Contact: 홍길동 (gildong@example.com)
 
 ## 설치
 
-저장소를 받아 마켓플레이스로 등록한 뒤 필요한 mod를 설치합니다.
+저장소를 받아 마켓플레이스로 등록한 뒤 플러그인을 설치합니다.
 
 ```sh
 git clone https://github.com/gail5135/hc-cc-plugins.git ~/.claude/hc-cc-plugins
 claude plugin marketplace add ~/.claude/hc-cc-plugins
-
-claude plugin install usage-panel@hc-cc-plugins
-claude plugin install git-guard@hc-cc-plugins
-claude plugin install commit-trailer@hc-cc-plugins
+claude plugin install hc-cc-plugins@hc-cc-plugins
 ```
 
 설치한 뒤 Claude Code를 재시작하거나 `/reload-plugins`를 실행합니다.
 
-mod는 등록한 폴더를 직접 읽으므로 폴더를 지우거나 옮기면 동작하지 않습니다.
+플러그인은 등록한 폴더를 직접 읽으므로 폴더를 지우거나 옮기면 동작하지 않습니다.
 
 ### 갱신
 
@@ -81,10 +96,24 @@ git -C ~/.claude/hc-cc-plugins pull
 claude plugin marketplace update hc-cc-plugins
 ```
 
+### mod를 따로 설치했던 경우 (0.1.x)
+
+예전처럼 `usage-panel`, `git-guard`, `commit-trailer`를 따로 설치했다면, 먼저 셋을 지운 뒤 갱신하고 새 플러그인을 설치합니다. 갱신을 먼저 하면 예전 플러그인이 가리키던 폴더가 사라져 그 사이에 mod가 동작하지 않습니다.
+
+```sh
+claude plugin uninstall usage-panel@hc-cc-plugins
+claude plugin uninstall git-guard@hc-cc-plugins
+claude plugin uninstall commit-trailer@hc-cc-plugins
+git -C ~/.claude/hc-cc-plugins pull
+claude plugin marketplace update hc-cc-plugins
+claude plugin install hc-cc-plugins@hc-cc-plugins
+```
+
+상태 키가 플러그인 이름 아래로 옮겨져서, 패널의 질문 로그처럼 세션에 쌓인 값은 한 번 초기화됩니다.
+
 ## 개발
 
 ```sh
-claude plugin validate .                # 마켓플레이스 검증
-claude plugin validate mods/git-guard   # mod 검증
-claude plugin test mods/git-guard       # mod 테스트
+claude plugin validate .   # 플러그인과 마켓플레이스 검증
+claude plugin test .       # 모든 mod 테스트 (mod를 모두 올린 상태로 실행)
 ```

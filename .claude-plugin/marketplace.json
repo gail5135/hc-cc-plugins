@@ -3,21 +3,14 @@
   "owner": {
     "name": "이해창"
   },
+  "metadata": {
+    "description": "어디서든 설치 한 번으로 갖추는 개인 Claude Code 환경"
+  },
   "plugins": [
     {
-      "name": "usage-panel",
-      "source": "./mods/usage-panel",
-      "description": "채팅 옆에 컨텍스트, 5시간 한도, 주간 한도 사용량을 실시간으로 표시합니다"
-    },
-    {
-      "name": "git-guard",
-      "source": "./mods/git-guard",
-      "description": "명시적인 지시가 없는 git commit과 git push를 차단합니다"
-    },
-    {
-      "name": "commit-trailer",
-      "source": "./mods/commit-trailer",
-      "description": "Claude가 만드는 커밋에 작업한 모델과 effort, 연락처 trailer를 붙입니다"
+      "name": "hc-cc-plugins",
+      "source": "./",
+      "description": "사용량 패널, git 커밋·푸시 가드, 커밋 trailer를 한 번에 설치합니다"
     }
   ]
 }

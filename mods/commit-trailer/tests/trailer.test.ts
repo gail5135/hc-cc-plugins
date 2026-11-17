@@ -6,7 +6,7 @@ const CONTACT = `--trailer 'Contact: 홍길동 (gildong@example.com)'`
 type Env = Parameters<Parameters<typeof test>[1]>
 
 // git config 값과 Bash로 넘어간 명령을 기록한다.
-const setup = ($: Env[0], on: Env[1], config: Record<string, string> = {}, envEffort?: string) => {
+const setup = async ($: Env[0], on: Env[1], config: Record<string, string> = {}, envEffort?: string) => {
   const ran: string[] = []
   const cwds: (string | undefined)[] = []
   const values: Record<string, string> = { 'user.name': '홍길동', 'user.email': 'gildong@example.com', ...config }
@@ -14,7 +14,8 @@ const setup = ($: Env[0], on: Env[1], config: Record<string, string> = {}, envEf
   on('session.model', () => ({ value: 'claude-opus-5-5[1m]' }))
   on('env.get', () => ({ value: envEffort }) as never)
   on('process.run', (_, e) => {
-    cwds.push(e.init?.cwd)
+    // 같은 플러그인의 usage-panel도 git을 실행하므로 git config 호출만 기록한다.
+    if (e.argv[1] === 'config') cwds.push(e.init?.cwd)
     const value = values[e.argv.at(-1) ?? ''] ?? ''
 
     return {
@@ -38,6 +39,10 @@ const setup = ($: Env[0], on: Env[1], config: Record<string, string> = {}, envEf
     return { result: {} }
   })
 
+  // 같은 플러그인의 git-guard가 커밋 지시 없는 커밋을 막으므로, 사용자가 커밋을 지시한 상태로 시작한다.
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  await $.prompt.submit({ text: '커밋해줘', wait: false, origin: { kind: 'composer' } } as never)
+
   const step = async (extra: Record<string, unknown>) => {
     for await (const _ of $.turn.step({ ...STEP, ...extra } as never)) void _
   }
@@ -46,7 +51,7 @@ const setup = ($: Env[0], on: Env[1], config: Record<string, string> = {}, envEf
 }
 
 test('메인 루프의 모델과 effort, git 사용자를 trailer로 붙인다', async ($, on) => {
-  const { ran, step } = setup($, on)
+  const { ran, step } = await setup($, on)
   await step({ effort: 'high' })
 
   await $.tool.call({ tool: 'Bash', command: 'git commit -m "x"' })
@@ -55,7 +60,7 @@ test('메인 루프의 모델과 effort, git 사용자를 trailer로 붙인다',
 })
 
 test('subagent의 커밋에는 그 subagent의 모델과 effort를 쓴다', async ($, on) => {
-  const { ran, step } = setup($, on)
+  const { ran, step } = await setup($, on)
   await step({ effort: 'high' })
   await step({ model: 'claude-sonnet-5-5', effort: 'low', agentId: 'a1' })
 
@@ -65,7 +70,7 @@ test('subagent의 커밋에는 그 subagent의 모델과 effort를 쓴다', asyn
 })
 
 test('모델 요청 전에는 세션 모델과 CLAUDE_EFFORT를 쓴다', async ($, on) => {
-  const { ran } = setup($, on, {}, 'medium')
+  const { ran } = await setup($, on, {}, 'medium')
 
   await $.tool.call({ tool: 'Bash', command: 'git commit -m x' })
 
@@ -73,7 +78,7 @@ test('모델 요청 전에는 세션 모델과 CLAUDE_EFFORT를 쓴다', async (
 })
 
 test('effort를 모르면 괄호를 붙이지 않는다', async ($, on) => {
-  const { ran, step } = setup($, on)
+  const { ran, step } = await setup($, on)
   await step({})
 
   await $.tool.call({ tool: 'Bash', command: 'git commit -m x' })
@@ -82,7 +87,7 @@ test('effort를 모르면 괄호를 붙이지 않는다', async ($, on) => {
 })
 
 test('git -C 경로의 저장소에서 사용자 정보를 읽는다', async ($, on) => {
-  const { ran, cwds, step } = setup($, on)
+  const { ran, cwds, step } = await setup($, on)
   await step({ effort: 'high' })
 
   await $.tool.call({ tool: 'Bash', command: 'git -C /repo commit -m x' })
@@ -92,7 +97,7 @@ test('git -C 경로의 저장소에서 사용자 정보를 읽는다', async ($,
 })
 
 test('한 명령에 커밋이 여러 번 있으면 모두 붙인다', async ($, on) => {
-  const { ran, step } = setup($, on)
+  const { ran, step } = await setup($, on)
   await step({ effort: 'high' })
 
   await $.tool.call({ tool: 'Bash', command: 'git add . && git commit -m a && git commit --amend --no-edit' })
@@ -101,7 +106,7 @@ test('한 명령에 커밋이 여러 번 있으면 모두 붙인다', async ($, 
 })
 
 test('작은따옴표가 든 이름도 셸에서 깨지지 않게 감싼다', async ($, on) => {
-  const { ran, step } = setup($, on, { 'user.name': "O'Neil" })
+  const { ran, step } = await setup($, on, { 'user.name': "O'Neil" })
   await step({ effort: 'high' })
 
   await $.tool.call({ tool: 'Bash', command: 'git commit -m x' })
@@ -110,7 +115,7 @@ test('작은따옴표가 든 이름도 셸에서 깨지지 않게 감싼다', as
 })
 
 test('git 사용자 정보가 없으면 Contact를 붙이지 않는다', async ($, on) => {
-  const { ran, step } = setup($, on, { 'user.name': '', 'user.email': '' })
+  const { ran, step } = await setup($, on, { 'user.name': '', 'user.email': '' })
   await step({ effort: 'high' })
 
   await $.tool.call({ tool: 'Bash', command: 'git commit -m x' })
@@ -121,7 +126,7 @@ test('git 사용자 정보가 없으면 Contact를 붙이지 않는다', async (
 describe('커밋이 아닌 명령은 그대로 둔다', () => {
   for (const command of ['git status', 'git log --grep commit', 'git commit-tree HEAD^{tree}', 'echo commit']) {
     test(command, async ($, on) => {
-      const { ran } = setup($, on)
+      const { ran } = await setup($, on)
 
       await $.tool.call({ tool: 'Bash', command })
 

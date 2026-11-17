@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 const NOW = Date.parse('2026-11-02T00:00:00Z')
 const PANE = {
-  plugin: 'usage-panel',
+  plugin: 'hc-cc-plugins',
   component: 'Pane',
   requestId: 'usage-panel',
   props: {

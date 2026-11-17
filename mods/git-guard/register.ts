@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-const lastPrompt = atom({ plugin: 'git-guard', key: 'lastPrompt' } as const, '')
+const lastPrompt = atom({ plugin: 'hc-cc-plugins', key: 'lastPrompt' } as const, '')
 
 // git 뒤의 전역 옵션(-C path, -c k=v 등)을 건너뛰어 하위 명령을 찾는다.
 const GIT_ACTION = /\bgit\b(?:\s+-\S+(?:\s+(?!commit\b|push\b)[^\s-]\S*)?)*\s+(commit|push)\b/g

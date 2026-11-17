@@ -1,3 +1,7 @@
+// git-guard
+export type LastPrompt = string
+
+// usage-panel
 export type UsageWindow = { kind: string; percentUsed: number; resetsAt?: string }
 
 export type CommitGroup = { branch: string; commits: { hash: string; subject: string }[] }
@@ -17,6 +21,10 @@ export type UsageSnapshot = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'usage-panel': { snapshot: Shaped<UsageSnapshot | null>; questionPage: number | null; effortLevel: string; modelName: string; devServer: string; gitBranch: string; utcOffsetMinutes: number | null; agents: Shaped<AgentRow[]>; commitGroups: Shaped<CommitGroup[]>; questions: Shaped<AskedQuestion[]> }
+    'hc-cc-plugins': {
+      // git-guard
+      lastPrompt: LastPrompt
+      // usage-panel
+      snapshot: Shaped<UsageSnapshot | null>; questionPage: number | null; effortLevel: string; modelName: string; devServer: string; gitBranch: string; utcOffsetMinutes: number | null; agents: Shaped<AgentRow[]>; commitGroups: Shaped<CommitGroup[]>; questions: Shaped<AskedQuestion[]> }
   }
 }

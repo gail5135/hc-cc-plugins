@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionUsage } from 'claude-code'
 
-import type { AgentRow, AskedQuestion, CommitGroup, UsageSnapshot } from '../types'
+import type { AgentRow, AskedQuestion, CommitGroup, UsageSnapshot } from '../../types'
 
 const PANE = 'usage-panel'
 const TITLE = '사용량'
@@ -17,22 +17,22 @@ const QUESTION_COLOR = '#38bdf8'
 const COST_COLOR = '#85bb65'
 
 // 필드가 바뀌면 태그를 바꾼다: 이전 버전이 저장한 값은 reload 후에도 남는다.
-const snapshot = atom({ plugin: 'usage-panel', key: 'snapshot' } as const, null, {
+const snapshot = atom({ plugin: 'hc-cc-plugins', key: 'snapshot' } as const, null, {
   shape: 'snapshot-1',
 })
 
-const devServer = atom({ plugin: 'usage-panel', key: 'devServer' } as const, '')
+const devServer = atom({ plugin: 'hc-cc-plugins', key: 'devServer' } as const, '')
 
-const gitBranch = atom({ plugin: 'usage-panel', key: 'gitBranch' } as const, '')
-const utcOffsetMinutes = atom({ plugin: 'usage-panel', key: 'utcOffsetMinutes' } as const, null)
+const gitBranch = atom({ plugin: 'hc-cc-plugins', key: 'gitBranch' } as const, '')
+const utcOffsetMinutes = atom({ plugin: 'hc-cc-plugins', key: 'utcOffsetMinutes' } as const, null)
 
 // null이면 항상 최신 페이지를 따라간다.
-const questionPage = atom({ plugin: 'usage-panel', key: 'questionPage' } as const, null)
-const effortLevel = atom({ plugin: 'usage-panel', key: 'effortLevel' } as const, '')
-const modelName = atom({ plugin: 'usage-panel', key: 'modelName' } as const, '')
-const agents = atom({ plugin: 'usage-panel', key: 'agents' } as const, [], { shape: 'agents-1' })
-const commitGroups = atom({ plugin: 'usage-panel', key: 'commitGroups' } as const, [], { shape: 'commits-1' })
-const questions = atom({ plugin: 'usage-panel', key: 'questions' } as const, [], { shape: 'questions-1' })
+const questionPage = atom({ plugin: 'hc-cc-plugins', key: 'questionPage' } as const, null)
+const effortLevel = atom({ plugin: 'hc-cc-plugins', key: 'effortLevel' } as const, '')
+const modelName = atom({ plugin: 'hc-cc-plugins', key: 'modelName' } as const, '')
+const agents = atom({ plugin: 'hc-cc-plugins', key: 'agents' } as const, [], { shape: 'agents-1' })
+const commitGroups = atom({ plugin: 'hc-cc-plugins', key: 'commitGroups' } as const, [], { shape: 'commits-1' })
+const questions = atom({ plugin: 'hc-cc-plugins', key: 'questions' } as const, [], { shape: 'questions-1' })
 
 const USER_ORIGINS = new Set(['composer', 'bridge', 'sdk'])
 const ACTIVE_STATUSES = new Set(['pending', 'running', 'waiting', 'idle'])
@@ -266,6 +266,15 @@ const EFFORT_COLORS: Record<string, string> = {
   max: '#ef4444',
 }
 
+// effort를 직접 읽는 API가 없어 메인 루프의 모델 요청에서 읽는다. 세션의 설정값이 요청마다 실린다.
+// turn.step은 플러그인마다 한 번만 걸 수 있어 hooks/register.ts에서 부른다.
+export async function recordEffort($: EngineInterface, e: { agentId?: string; effort?: unknown }) {
+  if (e.agentId === undefined && e.effort !== undefined) {
+    const effort = String(e.effort)
+    await update($, effortLevel, () => effort)
+  }
+}
+
 export const register: Register = on => {
   let isTicking = false
 
@@ -311,7 +320,8 @@ export const register: Register = on => {
   // 커밋은 대부분 Bash로 만들어지므로 15초를 기다리지 않고 바로 반영한다.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const ran = await next(e)
-    void refreshCommits($)
+    // 세션이 먼저 끝나면 갱신이 거부될 수 있다. 다음 주기에 다시 읽으므로 무시한다.
+    refreshCommits($).catch(() => undefined)
 
     return ran
   })
@@ -338,16 +348,6 @@ export const register: Register = on => {
 
     return next(e)
   }).catch(($, e, next) => next(e))
-
-  // effort를 직접 읽는 API가 없어 메인 루프의 모델 요청에서 읽는다. 세션의 설정값이 요청마다 실린다.
-  on('turn.step', async function* ($, e, next) {
-    if (e.agentId === undefined && e.effort !== undefined) {
-      const effort = String(e.effort)
-      await update($, effortLevel, () => effort)
-    }
-
-    return yield* next(e)
-  })
 
   on('session.measure', async ($, e, next) => {
     await save($, e)

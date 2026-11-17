@@ -44,13 +44,14 @@ const contact = async ($: EngineInterface, cwd: string | undefined) => {
   return email ? `${name} (${email})`.trim() : name
 }
 
+type StepEvent = { agentId?: string; model: string; effort?: unknown }
+
+// turn.step은 플러그인마다 한 번만 걸 수 있어 hooks/register.ts에서 부른다.
+export const rememberStep = (e: StepEvent) => {
+  steps.set(e.agentId ?? MAIN, { model: e.model, effort: e.effort === undefined ? undefined : String(e.effort) })
+}
+
 export const register: Register = on => {
-  on('turn.step', async function* ($, e, next) {
-    steps.set(e.agentId ?? MAIN, { model: e.model, effort: e.effort === undefined ? undefined : String(e.effort) })
-
-    return yield* next(e)
-  })
-
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const commits = [...e.command.matchAll(GIT_COMMIT)]
     if (commits.length === 0) return next(e)
