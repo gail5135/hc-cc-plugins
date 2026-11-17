@@ -5,6 +5,9 @@ const GIT_COMMIT = /\bgit\b((?:\s+-\S+(?:\s+(?!commit\b)[^\s-]\S*)?)*)\s+commit(
 const GIT_DIR = /(?:^|\s)-C\s+(?:'([^']*)'|"([^"]*)"|(\S+))/
 
 const MAIN = 'main'
+// -F 파일이나 --amend처럼 명령에 보이지 않는 메시지에 이미 있는 trailer는 git이 건너뛰게 한다.
+// 기본값(addIfDifferentNeighbor)은 바로 위 줄만 비교해서 Coworked-By, Contact가 두 번씩 붙는다.
+const SKIP_EXISTING = ' -c trailer.ifexists=addIfDifferent'
 
 type Step = { model: string; effort?: string }
 
@@ -74,7 +77,14 @@ export const register: Register = on => {
       )
       if (trailers.length === 0) continue
 
-      command = `${command.slice(0, end)} ${trailers.map(t => `--trailer ${quote(t)}`).join(' ')}${command.slice(end)}`
+      const start = (match.index ?? 0) + 'git'.length
+      command = [
+        command.slice(0, start),
+        SKIP_EXISTING,
+        command.slice(start, end),
+        ` ${trailers.map(t => `--trailer ${quote(t)}`).join(' ')}`,
+        command.slice(end),
+      ].join('')
     }
 
     return next({ ...e, command })

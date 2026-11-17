@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 const STEP = { turnId: 't', index: 0, model: 'claude-opus-5-5', messageCount: 1 }
-const CONTACT = `--trailer 'Contact: 홍길동 (gildong@example.com)'`
+const SKIP = '-c trailer.ifexists=addIfDifferent'
+const CONTACT =`--trailer 'Contact: 홍길동 (gildong@example.com)'`
 
 type Env = Parameters<Parameters<typeof test>[1]>
 
@@ -56,7 +57,7 @@ test('메인 루프의 모델과 effort, git 사용자를 trailer로 붙인다',
 
   await $.tool.call({ tool: 'Bash', command: 'git commit -m "x"' })
 
-  expect(ran[0]).toBe(`git commit --trailer 'Coworked-By: Claude Opus 5.5 (high)' ${CONTACT} -m "x"`)
+  expect(ran[0]).toBe(`git ${SKIP} commit --trailer 'Coworked-By: Claude Opus 5.5 (high)' ${CONTACT} -m "x"`)
 })
 
 test('subagent의 커밋에는 그 subagent의 모델과 effort를 쓴다', async ($, on) => {
@@ -93,7 +94,7 @@ test('git -C 경로의 저장소에서 사용자 정보를 읽는다', async ($,
   await $.tool.call({ tool: 'Bash', command: 'git -C /repo commit -m x' })
 
   expect(cwds).toEqual(['/repo', '/repo'])
-  expect(ran[0]).toBe(`git -C /repo commit --trailer 'Coworked-By: Claude Opus 5.5 (high)' ${CONTACT} -m x`)
+  expect(ran[0]).toBe(`git ${SKIP} -C /repo commit --trailer 'Coworked-By: Claude Opus 5.5 (high)' ${CONTACT} -m x`)
 })
 
 test('한 명령에 커밋이 여러 번 있으면 모두 붙인다', async ($, on) => {
@@ -120,7 +121,7 @@ test('git 사용자 정보가 없으면 Contact를 붙이지 않는다', async (
 
   await $.tool.call({ tool: 'Bash', command: 'git commit -m x' })
 
-  expect(ran[0]).toBe(`git commit --trailer 'Coworked-By: Claude Opus 5.5 (high)' -m x`)
+  expect(ran[0]).toBe(`git ${SKIP} commit --trailer 'Coworked-By: Claude Opus 5.5 (high)' -m x`)
 })
 
 test('명령에 이미 적힌 trailer는 다시 붙이지 않는다', async ($, on) => {
@@ -139,7 +140,7 @@ test('이미 적힌 trailer만 빼고 나머지는 붙인다', async ($, on) => 
 
   await $.tool.call({ tool: 'Bash', command: `git commit --trailer 'contact: 다른 사람' -m "x"` })
 
-  expect(ran[0]).toBe(`git commit --trailer 'Coworked-By: Claude Opus 5.5 (high)' --trailer 'contact: 다른 사람' -m "x"`)
+  expect(ran[0]).toBe(`git ${SKIP} commit --trailer 'Coworked-By: Claude Opus 5.5 (high)' --trailer 'contact: 다른 사람' -m "x"`)
 })
 
 test('trailer가 적힌 커밋과 적히지 않은 커밋을 따로 판단한다', async ($, on) => {
@@ -153,6 +154,15 @@ test('trailer가 적힌 커밋과 적히지 않은 커밋을 따로 판단한다
 
   expect(ran[0]?.match(/Coworked-By/g)).toHaveLength(2)
   expect(ran[0]?.match(/Contact:/g)).toHaveLength(2)
+})
+
+test('메시지 파일이나 amend의 trailer는 git이 건너뛰도록 commit 앞에 설정을 넣는다', async ($, on) => {
+  const { ran, step } = await setup($, on)
+  await step({ effort: 'high' })
+
+  await $.tool.call({ tool: 'Bash', command: 'git add . && git commit -F msg.txt && git commit --amend --no-edit' })
+
+  expect(ran[0]?.match(/git -c trailer\.ifexists=addIfDifferent commit --trailer/g)).toHaveLength(2)
 })
 
 describe('커밋이 아닌 명령은 그대로 둔다', () => {
