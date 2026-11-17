@@ -143,6 +143,54 @@ const refreshAgents = async ($: EngineInterface) => {
   if (JSON.stringify(current) !== JSON.stringify(rows)) await update($, agents, () => rows)
 }
 
+type WebRepo = { origin: string; path: string; host: string }
+
+// 원격 주소(https, ssh://, git@host:path)를 웹 저장소 주소로 바꾼다. ssh 포트는 웹 포트와 다르므로 버린다.
+const parseRemote = (remote: string): WebRepo | undefined => {
+  const text = remote.trim()
+  const web = /^(https?):\/\/(?:[^@/]+@)?([^/]+)\/(.+?)(?:\.git)?\/*$/.exec(text)
+  const ssh = /^(?:ssh|git\+ssh):\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+?)(?:\.git)?\/*$/.exec(text)
+  const scp = /^(?:[^@/:]+@)?([^/:]+):(?!\/)(.+?)(?:\.git)?\/*$/.exec(text)
+  const [scheme, host, path] = web ? [web[1], web[2], web[3]] : ssh ? ['https', ssh[1], ssh[2]] : scp ? ['https', scp[1], scp[2]] : []
+  if (!scheme || !host || !path) return undefined
+
+  // Azure DevOps의 ssh 주소(ssh.dev.azure.com:v3/org/project/repo)는 웹 주소와 모양이 다르다.
+  const azure = /^v3\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(path)
+  if (azure && host === 'ssh.dev.azure.com') {
+    return { origin: 'https://dev.azure.com', path: `${azure[1]}/${azure[2]}/_git/${azure[3]}`, host: 'dev.azure.com' }
+  }
+  if (azure && host === 'vs-ssh.visualstudio.com') {
+    return { origin: `https://${azure[1]}.visualstudio.com`, path: `${azure[2]}/_git/${azure[3]}`, host: 'visualstudio.com' }
+  }
+
+  return { origin: `${scheme}://${host}`, path, host: host.toLowerCase() }
+}
+
+// 호스트로 서비스를 가린다. 모르는 호스트는 GitHub, Gitea, Forgejo 등이 쓰는 /commit/<sha>로 만든다.
+export const commitUrl = (remote: string, sha: string) => {
+  const repo = parseRemote(remote)
+  if (!repo) return undefined
+
+  const base = `${repo.origin}/${repo.path}`
+  if (/(^|\.)gitlab\b/.test(repo.host)) return `${base}/-/commit/${sha}`
+  if (repo.host === 'bitbucket.org') return `${base}/commits/${sha}`
+
+  return `${base}/commit/${sha}`
+}
+
+// 브랜치가 따라가는 원격을 먼저 쓰고, 없으면 origin, 그것도 없으면 첫 원격을 쓴다.
+const remoteUrlOf = async ($: EngineInterface, path: string, branch: string) => {
+  const git = (...args: string[]) => $.process.run(['git', '-C', path, ...args])
+  const tracked = (await git('config', `branch.${branch}.remote`)).stdout.trim()
+  const names = (await git('remote')).stdout.split('\n').map(name => name.trim()).filter(Boolean)
+  const name = [tracked, 'origin', names[0]].find(one => one && names.includes(one))
+  if (!name) return undefined
+
+  const url = await git('remote', 'get-url', name)
+
+  return url.exitCode === 0 ? url.stdout.trim() : undefined
+}
+
 // 이번 세션 동안 각 워크트리에 사용자 이름으로 남긴 커밋만 모은다.
 const collectCommitGroups = async ($: EngineInterface) => {
   const list = await $.process.run(['git', 'worktree', 'list', '--porcelain'])
@@ -165,20 +213,20 @@ const collectCommitGroups = async ($: EngineInterface) => {
       'log',
       since,
       `--author=${author}`,
-      '--format=%h%x09%s',
+      '--format=%h%x09%H%x09%s',
       '-n',
       String(MAX_COMMITS_PER_BRANCH),
     ])
     if (log.exitCode !== 0) continue
 
-    const commits = log.stdout
-      .split('\n')
-      .filter(Boolean)
-      .map(line => {
-        const [hash = '', ...subject] = line.split('\t')
+    const lines = log.stdout.split('\n').filter(Boolean)
+    const remote = lines.length > 0 ? await remoteUrlOf($, path, branch).catch(() => undefined) : undefined
+    const commits = lines.map(line => {
+      const [hash = '', sha = '', ...subject] = line.split('\t')
+      const url = remote === undefined ? undefined : commitUrl(remote, sha)
 
-        return { hash, subject: subject.join('\t') }
-      })
+      return { hash, subject: subject.join('\t'), ...(url === undefined ? {} : { url }) }
+    })
     if (commits.length > 0) groups.push({ branch, commits })
   }
 
@@ -363,7 +411,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Button, Link, Text } = $.ui.resolve(e)
     const data = await read($, snapshot)
     const server = await read($, devServer)
     const branch = await read($, gitBranch)
@@ -517,7 +565,15 @@ export const register: Register = on => {
               <Text bold>{clip(group.branch, width)}</Text>
               {group.commits.map(commit => (
                 <Text>
-                  <Text color={COMMIT_COLOR}>{commit.hash}</Text>{' '}
+                  {commit.url === undefined ? (
+                    <Text color={COMMIT_COLOR}>{commit.hash}</Text>
+                  ) : (
+                    <Link href={commit.url}>
+                      <Text color={COMMIT_COLOR} underline>
+                        {commit.hash}
+                      </Text>
+                    </Link>
+                  )}{' '}
                   <Text dimColor>{clip(commit.subject, width - commit.hash.length - 1)}</Text>
                 </Text>
               ))}

@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import { commitUrl } from '../register'
 
 const NOW = Date.parse('2026-11-02T00:00:00Z')
 const PANE = {
@@ -268,8 +269,12 @@ test('세션의 커밋을 브랜치별로 표시하고, 커밋이 없는 워크�
       : argv.includes('config user.name')
         ? '이해창\n'
         : argv.includes('-C /b log')
-          ? 'abc1234\tfeat: 새 기능\n'
-          : ''
+          ? 'abc1234\tabc1234def5678\tfeat: 새 기능\n'
+          : argv.includes('-C /b remote get-url origin')
+            ? 'git@github.com:hc/sample.git\n'
+            : argv.includes('-C /b remote')
+              ? 'origin\n'
+              : ''
 
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
@@ -281,6 +286,84 @@ test('세션의 커밋을 브랜치별로 표시하고, 커밋이 없는 워크�
   expect(await ui.find({ type: 'Text', text: 'abc1234 feat: 새 기능' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: 'develop' })).toBeUndefined()
   await ui.unmount()
+})
+
+test('원격이 없는 저장소의 커밋은 해시를 링크 없이 표시한다', async ($, on) => {
+  on('clock.now', () => ({ value: NOW }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', () => ({ value: { command: 'usage-panel' } }))
+  on('session.usage', () => ({ value: { startedAt: NOW, context: { window: 200_000 }, rateLimits: [] } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('process.run', (_, e) => {
+    const argv = e.argv.join(' ')
+    const stdout = argv.includes('worktree list')
+      ? 'worktree /b\nHEAD 2\nbranch refs/heads/main\n\n'
+      : argv.includes('-C /b log')
+        ? 'abc1234\tabc1234def5678\tfix: 고침\n'
+        : ''
+
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: 'abc1234 fix: 고침' })).toBeDefined()
+  expect(await ui.find({ type: 'Link' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('브랜치가 따라가는 원격의 웹 커밋 페이지로 해시를 링크한다', async ($, on) => {
+  on('clock.now', () => ({ value: NOW }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', () => ({ value: { command: 'usage-panel' } }))
+  on('session.usage', () => ({ value: { startedAt: NOW, context: { window: 200_000 }, rateLimits: [] } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('process.run', (_, e) => {
+    const argv = e.argv.join(' ')
+    const stdout = argv.includes('worktree list')
+      ? 'worktree /b\nHEAD 2\nbranch refs/heads/main\n\n'
+      : argv.includes('-C /b log')
+        ? 'abc1234\tabc1234def5678\tfix: 고침\n'
+        : argv.includes('config branch.main.remote')
+          ? 'upstream\n'
+          : argv.includes('remote get-url upstream')
+            ? 'https://gitlab.com/group/sub/repo.git\n'
+            : argv.includes('remote get-url origin')
+              ? 'git@github.com:hc/fork.git\n'
+              : argv.endsWith('-C /b remote')
+                ? 'origin\nupstream\n'
+                : ''
+
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const link = await ui.find({ type: 'Link', text: 'abc1234' })
+  expect(link?.props.href).toBe('https://gitlab.com/group/sub/repo/-/commit/abc1234def5678')
+  await ui.unmount()
+})
+
+const REMOTES: [remote: string, expected: string | undefined][] = [
+  ['git@github.com:hc/repo.git', 'https://github.com/hc/repo/commit/SHA'],
+  ['https://github.com/hc/repo', 'https://github.com/hc/repo/commit/SHA'],
+  ['https://token@github.com/hc/repo.git', 'https://github.com/hc/repo/commit/SHA'],
+  ['ssh://git@gitlab.example.com:2222/group/sub/repo.git', 'https://gitlab.example.com/group/sub/repo/-/commit/SHA'],
+  ['http://gitlab.local:8080/group/repo.git', 'http://gitlab.local:8080/group/repo/-/commit/SHA'],
+  ['git@bitbucket.org:team/repo.git', 'https://bitbucket.org/team/repo/commits/SHA'],
+  ['git@ssh.dev.azure.com:v3/org/proj/repo', 'https://dev.azure.com/org/proj/_git/repo/commit/SHA'],
+  ['https://org@dev.azure.com/org/proj/_git/repo', 'https://dev.azure.com/org/proj/_git/repo/commit/SHA'],
+  ['git@codeberg.org:hc/repo.git', 'https://codeberg.org/hc/repo/commit/SHA'],
+  ['/srv/git/repo.git', undefined],
+  ['file:///srv/git/repo.git', undefined],
+]
+
+test('원격 주소 형식마다 웹 커밋 주소를 만든다', () => {
+  for (const [remote, expected] of REMOTES) {
+    expect(commitUrl(remote, 'SHA')).toBe(expected)
+  }
 })
 
 test('실행 중인 subagent를 먼저 표시하고 끝난 항목은 뒤에 표시한다', async ($, on) => {

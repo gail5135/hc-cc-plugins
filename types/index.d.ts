@@ -4,7 +4,8 @@ export type LastPrompt = string
 // usage-panel
 export type UsageWindow = { kind: string; percentUsed: number; resetsAt?: string }
 
-export type CommitGroup = { branch: string; commits: { hash: string; subject: string }[] }
+// url은 원격 저장소의 웹 커밋 페이지. 원격이 없거나 주소를 읽지 못하면 없다.
+export type CommitGroup = { branch: string; commits: { hash: string; subject: string; url?: string }[] }
 
 export type AskedQuestion = { id: string; text: string }
 
