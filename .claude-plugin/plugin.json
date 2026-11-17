@@ -1,6 +1,6 @@
 {
   "name": "hc-cc-plugins",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "사용량 패널, git 커밋·푸시 가드, 커밋 trailer, 선택지 표 규칙을 한 번에 설치합니다",
   "author": { "name": "이해창" },
   "types": "./types/index.d.ts"

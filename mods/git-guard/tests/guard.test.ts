@@ -87,6 +87,13 @@ const CASES: [prompt: string, command: string, isAllowed: boolean][] = [
   ["commit this but don't push", 'git push', false],
   ["commit this but don't push", 'git commit -m "x"', true],
 
+  // 같은 단어가 여러 번 나오면 마지막 지시나 금지를 따른다
+  ['지금 커밋 안한 파일 중에 커밋 안해도 되는 파일은 지우고 해야되는 건 커밋하셈.', 'git commit -m "x"', true],
+  ['커밋 안 해도 돼', 'git commit -m "x"', false],
+  ['커밋해줘. 아니다, 커밋하지 마', 'git commit -m "x"', false],
+  ['커밋하지 마. 아니 그냥 커밋해줘', 'git commit -m "x"', true],
+  ['푸시해줘. 아 잠깐 푸시는 하지 마', 'git push', false],
+
   // 올려줘는 커밋·푸시와 이어질 때만 푸시 지시
   ['버전 올려줘', 'git push', false],
   ['PR 올려줘', 'git push', false],

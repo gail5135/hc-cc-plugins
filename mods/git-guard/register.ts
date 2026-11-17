@@ -78,10 +78,12 @@ const isOrderedAt = (action: Action, { word, before, after }: Occurrence): boole
 const isOrdered = (action: Action, prompt: string): boolean => {
   const found = occurrences(action, prompt)
 
-  // 같은 단어를 금지한 곳이 하나라도 있으면 지시로 보지 않는다.
-  if (found.some(isNegated)) return false
   if (BARE.test(prompt) && found.length > 0) return true
-  if (found.some(at => isOrderedAt(action, at))) return true
+
+  // 같은 단어를 지시하거나 금지한 곳 중 마지막 것을 따른다.
+  // '커밋 안 해도 되는 파일은 지우고 나머지는 커밋하셈'은 지시이고, '커밋해줘. 아니다, 커밋하지 마'는 금지다.
+  const decided = found.filter(at => isNegated(at) || isOrderedAt(action, at)).at(-1)
+  if (decided !== undefined) return !isNegated(decided)
 
   // '커밋하고 올려줘'의 올려줘는 푸시 지시다.
   return action === 'push' && occurrences('commit', prompt).some(({ after }) => COMMIT_THEN_UPLOAD.test(after) && !isQuestion(after))
