@@ -44,6 +44,8 @@ const contact = async ($: EngineInterface, cwd: string | undefined) => {
   return email ? `${name} (${email})`.trim() : name
 }
 
+const hasTrailer = (text: string, key: string) => new RegExp(`(?:^|[\\s'"])${key}\\s*:`, 'i').test(text)
+
 type StepEvent = { agentId?: string; model: string; effort?: unknown }
 
 // turn.step은 플러그인마다 한 번만 걸 수 있어 hooks/register.ts에서 부른다.
@@ -60,12 +62,17 @@ export const register: Register = on => {
     let command = e.command
 
     // 뒤에서부터 끼워 넣어야 앞쪽 위치가 밀리지 않는다.
-    for (const match of commits.reverse()) {
+    for (const [index, match] of [...commits.entries()].reverse()) {
       const dir = GIT_DIR.exec(match[1] ?? '')
       const cwd = dir ? (dir[1] ?? dir[2] ?? dir[3]) : undefined
-      const who = await contact($, cwd)
-      const trailers = [`Coworked-By: ${by}`, ...(who ? [`Contact: ${who}`] : [])]
       const end = (match.index ?? 0) + match[0].length
+      // 이 commit 명령에 이미 적힌 trailer는 다시 붙이지 않는다. git은 바로 옆의 같은 trailer만 합치므로 두 번씩 남는다.
+      const written = command.slice(end, commits[index + 1]?.index ?? command.length)
+      const who = await contact($, cwd)
+      const trailers = [`Coworked-By: ${by}`, ...(who ? [`Contact: ${who}`] : [])].filter(
+        trailer => !hasTrailer(written, trailer.slice(0, trailer.indexOf(':'))),
+      )
+      if (trailers.length === 0) continue
 
       command = `${command.slice(0, end)} ${trailers.map(t => `--trailer ${quote(t)}`).join(' ')}${command.slice(end)}`
     }

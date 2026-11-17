@@ -123,6 +123,38 @@ test('git 사용자 정보가 없으면 Contact를 붙이지 않는다', async (
   expect(ran[0]).toBe(`git commit --trailer 'Coworked-By: Claude Opus 5.5 (high)' -m x`)
 })
 
+test('명령에 이미 적힌 trailer는 다시 붙이지 않는다', async ($, on) => {
+  const { ran, step } = await setup($, on)
+  await step({ effort: 'high' })
+
+  const command = `git commit --trailer 'Coworked-By: Claude Opus 5.5 (high)' ${CONTACT} -m "x"`
+  await $.tool.call({ tool: 'Bash', command })
+
+  expect(ran[0]).toBe(command)
+})
+
+test('이미 적힌 trailer만 빼고 나머지는 붙인다', async ($, on) => {
+  const { ran, step } = await setup($, on)
+  await step({ effort: 'high' })
+
+  await $.tool.call({ tool: 'Bash', command: `git commit --trailer 'contact: 다른 사람' -m "x"` })
+
+  expect(ran[0]).toBe(`git commit --trailer 'Coworked-By: Claude Opus 5.5 (high)' --trailer 'contact: 다른 사람' -m "x"`)
+})
+
+test('trailer가 적힌 커밋과 적히지 않은 커밋을 따로 판단한다', async ($, on) => {
+  const { ran, step } = await setup($, on)
+  await step({ effort: 'high' })
+
+  await $.tool.call({
+    tool: 'Bash',
+    command: `git commit --trailer 'Coworked-By: x' ${CONTACT} -m a && git commit --amend --no-edit`,
+  })
+
+  expect(ran[0]?.match(/Coworked-By/g)).toHaveLength(2)
+  expect(ran[0]?.match(/Contact:/g)).toHaveLength(2)
+})
+
 describe('커밋이 아닌 명령은 그대로 둔다', () => {
   for (const command of ['git status', 'git log --grep commit', 'git commit-tree HEAD^{tree}', 'echo commit']) {
     test(command, async ($, on) => {
