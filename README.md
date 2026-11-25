@@ -37,6 +37,8 @@ skills/  agents/  commands/   스킬, 서브에이전트, 슬래시 커맨드 (�
 - Vite 개발 서버의 proxy preset(5173 포트)과 현재 브랜치
 - 실행 중이거나 끝난 subagent. 누르면 해당 화면으로 이동합니다.
 - 이번 세션에서 만든 워크트리별 커밋. 해시를 누르면 원격 저장소의 웹 커밋 페이지가 열립니다. GitHub, GitLab(호스트 이름에 `gitlab`이 있을 때), Bitbucket Cloud, Azure DevOps를 구분하고, 다른 호스트는 Gitea·Forgejo처럼 `/commit/<해시>` 주소로 엽니다. 원격이 없으면 링크 없이 표시합니다.
+  - 커밋 목록은 Claude가 Bash나 PowerShell로 git 명령을 실행한 뒤에만 다시 읽습니다. 주기적으로는 읽지 않습니다. 다른 터미널에서 만든 커밋은 다음 git 명령이나 `/usage-panel`에서 반영됩니다.
+  - 15초마다 실행하던 git을 줄이려고 이렇게 바꿨습니다. git은 워크트리마다 실행되고, Windows에서는 프로세스 생성이 멈추면 세션 전체가 멈춥니다.
 - 질문 로그. 누르면 해당 질문 위치로 이동합니다.
 
 ### git-guard

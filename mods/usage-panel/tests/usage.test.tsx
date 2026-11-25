@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 import { commitUrl } from '../register'
 
 const NOW = Date.parse('2026-11-02T00:00:00Z')
@@ -594,3 +594,67 @@ for (const [bodyColumns, cells] of BAR_WIDTHS) {
     await ui.unmount()
   })
 }
+
+type Env = Parameters<Parameters<typeof test>[1]>
+
+// 세션을 시작하고, 그 뒤에 실행된 git 명령만 모은다.
+const startRecording = async ($: Env[0], on: Env[1]) => {
+  const clock = mock.clock(on, { now: NOW })
+  const ran: string[] = []
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', () => ({ value: { command: 'usage-panel' } }))
+  on('session.usage', () => ({ value: { startedAt: NOW, context: { window: 200_000 }, rateLimits: [] } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('tool.call', () => ({ result: {} }))
+  on('process.run', (_, e) => {
+    if (e.argv[0] === 'git') ran.push(e.argv.join(' '))
+    const stdout = e.argv.includes('worktree') ? 'worktree /a\nHEAD 1\nbranch refs/heads/main\n\n' : ''
+
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  ran.length = 0
+
+  return { clock, ran, worktreeLists: () => ran.filter(argv => argv.includes('worktree list')).length }
+}
+
+test('주기 갱신에서는 브랜치만 읽고 커밋 목록은 다시 읽지 않는다', async ($, on) => {
+  const { clock, ran, worktreeLists } = await startRecording($, on)
+
+  await clock.advance(60_000)
+
+  expect(ran.some(argv => argv.includes('branch --show-current'))).toBe(true)
+  expect(worktreeLists()).toBe(0)
+  expect(ran.some(argv => argv.includes(' log '))).toBe(false)
+})
+
+const SHELL_CASES: [tool: 'Bash' | 'PowerShell', command: string, refreshes: boolean][] = [
+  ['Bash', 'git status', true],
+  ['Bash', 'cd repo && git -C . log -1', true],
+  ['PowerShell', 'git log -1', true],
+  ['Bash', 'ls -la', false],
+  ['Bash', 'cat .git/config', false],
+  ['PowerShell', 'Get-ChildItem', false],
+]
+
+for (const [tool, command, refreshes] of SHELL_CASES) {
+  test(`${tool} \`${command}\` 뒤에 커밋 목록을 ${refreshes ? '다시 읽는다' : '다시 읽지 않는다'}`, async ($, on) => {
+    const { clock, worktreeLists } = await startRecording($, on)
+
+    await $.tool.call({ tool, command } as never)
+    await clock.settle()
+
+    expect(worktreeLists()).toBe(refreshes ? 1 : 0)
+  })
+}
+
+test('커밋 목록을 읽는 중에 들어온 갱신 요청은 끝난 뒤 한 번으로 합친다', async ($, on) => {
+  const { clock, worktreeLists } = await startRecording($, on)
+
+  await Promise.all([1, 2, 3, 4].map(() => $.tool.call({ tool: 'Bash', command: 'git status' })))
+  await clock.settle()
+
+  expect(worktreeLists()).toBeGreaterThan(0)
+  expect(worktreeLists()).toBeLessThanOrEqual(2)
+})

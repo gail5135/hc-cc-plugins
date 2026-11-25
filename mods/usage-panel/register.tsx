@@ -7,6 +7,9 @@ const PANE = 'usage-panel'
 const TITLE = '사용량'
 const REFRESH_MS = 15_000
 const AGENT_REFRESH_MS = 2_000
+// 커밋과 워크트리는 git 명령으로만 바뀐다. `.git/` 같은 경로는 뒤에 공백이 없어 걸리지 않는다.
+const GIT_COMMAND = /\bgit\s/
+const SHELL_TOOLS = ['Bash', 'PowerShell'] as const
 // 카드마다 색을 하나씩 정해 테두리, 제목, 핵심 값에 같이 쓴다. 사용량 막대의 단계 색과 겹치지 않게 고른다.
 const SERVER_COLOR = '#2dd4bf'
 const USAGE_COLOR = '#a78bfa'
@@ -238,6 +241,28 @@ const refreshCommits = async ($: EngineInterface) => {
   if (groups !== null) await update($, commitGroups, () => groups)
 }
 
+// 커밋 목록 한 번에 git을 워크트리 수 + 2번 이상 띄운다. 갱신 중에 들어온 요청은 끝난 뒤 한 번으로 합친다.
+let commitRefresh: Promise<void> | undefined
+let isCommitRefreshDue = false
+
+const requestCommits = ($: EngineInterface): Promise<void> => {
+  if (commitRefresh) {
+    isCommitRefreshDue = true
+    return commitRefresh
+  }
+
+  commitRefresh = (async () => {
+    do {
+      isCommitRefreshDue = false
+      await refreshCommits($)
+    } while (isCommitRefreshDue)
+  })().finally(() => {
+    commitRefresh = undefined
+  })
+
+  return commitRefresh
+}
+
 const rememberQuestion = async ($: EngineInterface, question: AskedQuestion) => {
   await update($, questions, list =>
     list.some(one => one.id === question.id)
@@ -339,20 +364,20 @@ export const register: Register = on => {
     await save($, await $.session.usage())
     await refreshDevServer($)
     await refreshUtcOffset($)
-    await refreshCommits($)
+    await requestCommits($)
     await refreshAgents($)
     await refreshModel($)
     await refreshEffort($)
     void $.ui.open({ id: PANE, title: TITLE })
 
     // 초기화까지 남은 시간은 응답이 없어도 줄어들므로 주기적으로 다시 읽는다.
+    // 커밋은 주기에서 뺀다: Windows에서 프로세스 생성이 멈추면 세션 전체가 멈추므로 git 실행을 최소로 줄인다.
     if (!isTicking) {
       isTicking = true
       $.clock.every(AGENT_REFRESH_MS, () => void refreshAgents($))
       $.clock.every(REFRESH_MS, () => {
         void $.session.usage().then(usage => save($, usage))
         void refreshDevServer($)
-        void refreshCommits($)
         void refreshModel($)
       })
     }
@@ -364,7 +389,7 @@ export const register: Register = on => {
     await save($, await $.session.usage())
     await refreshDevServer($)
     await refreshUtcOffset($)
-    await refreshCommits($)
+    await requestCommits($)
     await refreshAgents($)
     await refreshModel($)
     const opened = await $.ui.open({ id: PANE, title: TITLE })
@@ -372,14 +397,16 @@ export const register: Register = on => {
     return { text: opened.isPlaced ? '사용량 패널을 열었습니다.' : `사용량 패널이 대기 중입니다: ${opened.reason}` }
   })
 
-  // 커밋은 대부분 Bash로 만들어지므로 15초를 기다리지 않고 바로 반영한다.
-  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    const ran = await next(e)
-    // 세션이 먼저 끝나면 갱신이 거부될 수 있다. 다음 주기에 다시 읽으므로 무시한다.
-    refreshCommits($).catch(() => undefined)
+  // 커밋 목록은 git을 실행한 셸 명령 뒤에만 다시 읽는다. 세션 밖 터미널에서 만든 커밋은 다음 git 명령이나 /usage-panel에서 반영된다.
+  for (const tool of SHELL_TOOLS) {
+    on('tool.call', { tool }, async ($, e, next) => {
+      const ran = await next(e)
+      // 세션이 먼저 끝나면 갱신이 거부될 수 있다. 다음 git 명령에서 다시 읽으므로 무시한다.
+      if (GIT_COMMAND.test(e.command)) requestCommits($).catch(() => undefined)
 
-    return ran
-  })
+      return ran
+    })
+  }
 
   // /clear 후에는 대화가 사라져 이동할 위치가 없으므로 질문 로그도 비운다.
   on('session.end', async ($, e, next) => {
