@@ -40,10 +40,6 @@ const setup = async ($: Env[0], on: Env[1], config: Record<string, string> = {},
     return { result: {} }
   })
 
-  // 같은 플러그인의 git-guard가 커밋 지시 없는 커밋을 막으므로, 사용자가 커밋을 지시한 상태로 시작한다.
-  on('prompt.submit', (_, e) => ({ text: e.text }))
-  await $.prompt.submit({ text: '커밋해줘', wait: false, origin: { kind: 'composer' } } as never)
-
   const step = async (extra: Record<string, unknown>) => {
     for await (const _ of $.turn.step({ ...STEP, ...extra } as never)) void _
   }
