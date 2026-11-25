@@ -355,8 +355,37 @@ export async function recordEffort($: EngineInterface, e: { agentId?: string; ef
   }
 }
 
+// 패널은 Claude Code의 전체 화면 렌더러에서만 채팅 오른쪽에 붙는다. 맥은 대개 기본으로 켜져 있지만 Windows는 꺼진 채 시작하는 경우가 많다.
+const FULLSCREEN_HINT =
+  '사용량 패널을 채팅 오른쪽에 붙이려면 /tui fullscreen을 실행하세요. Claude Code가 전체 화면 모드로 다시 시작하고 세션을 이어갑니다.'
+const FULLSCREEN_HINT_KEY = 'fullscreenHintShown'
+const FULLSCREEN_HINT_MS = 15_000
+
+// 사용자가 일반 화면을 직접 고른 경우에는 안내하지 않는다.
+const prefersClassicScreen = async ($: EngineInterface) => {
+  const tui = await $.settings.read({ key: 'tui' }).catch(() => undefined)
+  const noFlicker = (await $.env.get('CLAUDE_CODE_NO_FLICKER').catch(() => undefined))?.toLowerCase()
+  const noAltScreen = (await $.env.get('CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN').catch(() => undefined))?.toLowerCase()
+
+  return (
+    tui === 'default' ||
+    ['0', 'false', 'no', 'off'].includes(noFlicker ?? '') ||
+    ['1', 'true', 'yes', 'on'].includes(noAltScreen ?? '')
+  )
+}
+
+// 토스트는 처음 한 번만 띄운다. 본 기록은 세션이 끝나도 남긴다.
+const offerFullscreenOnce = async ($: EngineInterface) => {
+  if ((await $.store.get(FULLSCREEN_HINT_KEY)) === true) return
+  if (await prefersClassicScreen($)) return
+
+  await $.store.set(FULLSCREEN_HINT_KEY, true)
+  $.ui.toast(FULLSCREEN_HINT, { timeoutMs: FULLSCREEN_HINT_MS })
+}
+
 export const register: Register = on => {
   let isTicking = false
+  let isFullscreenChecked = false
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -385,7 +414,7 @@ export const register: Register = on => {
     return started
   })
 
-  on('command.run', { command: 'usage-panel' }, async $ => {
+  on('command.run', { command: 'usage-panel' }, async ($, e) => {
     await save($, await $.session.usage())
     await refreshDevServer($)
     await refreshUtcOffset($)
@@ -393,8 +422,10 @@ export const register: Register = on => {
     await refreshAgents($)
     await refreshModel($)
     const opened = await $.ui.open({ id: PANE, title: TITLE })
+    const text = opened.isPlaced ? '사용량 패널을 열었습니다.' : `사용량 패널이 대기 중입니다: ${opened.reason}`
+    const needsHint = e.presentation.isFullscreen === false && !(await prefersClassicScreen($))
 
-    return { text: opened.isPlaced ? '사용량 패널을 열었습니다.' : `사용량 패널이 대기 중입니다: ${opened.reason}` }
+    return { text: needsHint ? `${text}\n${FULLSCREEN_HINT}` : text }
   })
 
   // 커밋 목록은 git을 실행한 셸 명령 뒤에만 다시 읽는다. 세션 밖 터미널에서 만든 커밋은 다음 git 명령이나 /usage-panel에서 반영된다.
@@ -439,6 +470,13 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Link, Text } = $.ui.resolve(e)
+
+    // 세션 시작 시점에는 화면 모드를 알 수 없어 처음 그릴 때 확인한다. 모바일 앱도 false라고 알리므로 터미널만 본다.
+    if (!isFullscreenChecked && e.surface === 'terminal' && e.viewport?.isFullscreen === false) {
+      isFullscreenChecked = true
+      offerFullscreenOnce($).catch(() => undefined)
+    }
+
     const data = await read($, snapshot)
     const server = await read($, devServer)
     const branch = await read($, gitBranch)

@@ -658,3 +658,80 @@ test('커밋 목록을 읽는 중에 들어온 갱신 요청은 끝난 뒤 한 �
   expect(worktreeLists()).toBeGreaterThan(0)
   expect(worktreeLists()).toBeLessThanOrEqual(2)
 })
+
+const MAIN_SCREEN = { columns: 148, rows: 40, isFullscreen: false }
+
+// 전체 화면 안내에 쓰는 저장소와 토스트를 흉내 낸다. env는 이름별 값을 준다.
+const hintEnvironment = (on: Env[1], { stored = {}, env = {} }: { stored?: Record<string, unknown>; env?: Record<string, string> } = {}) => {
+  const toasts: string[] = []
+  on('clock.now', () => ({ value: NOW }))
+  on('store.get', (_, e) => ({ value: stored[e.key] }))
+  on('store.set', (_, e) => {
+    stored[e.key] = e.value
+
+    return { value: undefined }
+  })
+  on('env.get', (_, e) => ({ value: env[e.name] }))
+  on('ui.toast', (_, e) => {
+    toasts.push(e.text)
+
+    return { value: undefined }
+  })
+
+  return { toasts, stored }
+}
+
+const settle = async (toasts: string[]) => {
+  for (let tries = 0; tries < 50 && toasts.length === 0; tries += 1) await Promise.resolve()
+}
+
+test('일반 화면 터미널에서 처음 그릴 때 전체 화면 안내를 한 번만 띄우고 기록한다', async ($, on) => {
+  const { toasts, stored } = hintEnvironment(on)
+
+  const first = await $.ui.mount({ ...PANE, surface: 'terminal', viewport: MAIN_SCREEN })
+  await settle(toasts)
+  await first.unmount()
+  const second = await $.ui.mount({ ...PANE, surface: 'terminal', viewport: MAIN_SCREEN })
+  await settle([])
+  await second.unmount()
+
+  expect(toasts).toHaveLength(1)
+  expect(toasts[0]).toContain('/tui fullscreen')
+  expect(stored.fullscreenHintShown).toBe(true)
+})
+
+const NO_HINT_CASES: [name: string, viewport: typeof MAIN_SCREEN, surface: 'terminal' | 'mobile', stored: Record<string, unknown>, env: Record<string, string>][] = [
+  ['전체 화면 모드', { ...MAIN_SCREEN, isFullscreen: true }, 'terminal', {}, {}],
+  ['예전 세션에서 이미 안내함', MAIN_SCREEN, 'terminal', { fullscreenHintShown: true }, {}],
+  ['CLAUDE_CODE_NO_FLICKER=0으로 일반 화면을 고름', MAIN_SCREEN, 'terminal', {}, { CLAUDE_CODE_NO_FLICKER: '0' }],
+  ['CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1로 일반 화면을 고름', MAIN_SCREEN, 'terminal', {}, { CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: '1' }],
+  ['터미널이 아닌 화면', MAIN_SCREEN, 'mobile', {}, {}],
+]
+
+for (const [name, viewport, surface, initial, env] of NO_HINT_CASES) {
+  test(`${name}이면 전체 화면 안내를 띄우지 않는다`, async ($, on) => {
+    const { toasts } = hintEnvironment(on, { stored: { ...initial }, env })
+
+    const ui = await $.ui.mount({ ...PANE, surface, viewport })
+    for (let tries = 0; tries < 50; tries += 1) await Promise.resolve()
+    await ui.unmount()
+
+    expect(toasts).toEqual([])
+  })
+}
+
+for (const isFullscreen of [false, true]) {
+  test(`/usage-panel은 ${isFullscreen ? '전체 화면에서 안내를 붙이지 않는다' : '일반 화면에서 매번 전체 화면 안내를 붙인다'}`, async ($, on) => {
+    hintEnvironment(on, { stored: { fullscreenHintShown: true } })
+    on('session.usage', () => ({ value: { startedAt: NOW, context: { window: 200_000 }, rateLimits: [] } }))
+    on('ui.open', () => ({ value: { isPlaced: true } }))
+    on('process.run', () => ({
+      value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+    }))
+
+    const ran = await $.command.run({ command: 'usage-panel', presentation: { isFullscreen, columns: 148 } } as never)
+
+    expect(ran.text).toContain('사용량 패널을 열었습니다.')
+    expect(ran.text?.includes('/tui fullscreen')).toBe(!isFullscreen)
+  })
+}
